@@ -1,0 +1,9 @@
+{
+  "files": [
+    "README.md",
+    "step-pk-add-settlestate",
+    "step-vk-add-settlestate",
+    "wrap-pk-add",
+    "wrap-vk-add"
+  ]
+}

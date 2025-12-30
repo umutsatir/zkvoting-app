@@ -1,4 +1,14 @@
-import { Add } from './Add.js';
-import { AddZkProgram, AddProgramProof } from './AddZkProgram.js';
+import { VoteProofProgram, VoteProofProgramProof, VotePublicInputs, VotePrivateInputs } from './VoteProofProgram.js';
+import { SettlementProgram, SettlementProgramProof, TallyState } from './SettlementProgram.js';
+import { VotingContract } from './VotingContract.js';
 
-export { Add, AddZkProgram, AddProgramProof };
+export { 
+  VoteProofProgram, 
+  VoteProofProgramProof, 
+  VotePublicInputs, 
+  VotePrivateInputs,
+  SettlementProgram, 
+  SettlementProgramProof, 
+  TallyState,
+  VotingContract
+};

@@ -1,0 +1,202 @@
+/* Layout */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 2rem;
+  background: radial-gradient(circle at 50% 10%, rgba(0, 210, 255, 0.05), transparent 40%),
+              radial-gradient(circle at 80% 80%, rgba(157, 0, 255, 0.05), transparent 40%);
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.statusBadge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: rgba(0, 255, 136, 0.1);
+    border: 1px solid rgba(0, 255, 136, 0.2);
+    border-radius: 20px;
+    font-size: 0.8rem;
+    color: #00ff88;
+}
+
+.statusDot {
+    width: 8px;
+    height: 8px;
+    background: #00ff88;
+    border-radius: 50%;
+    box-shadow: 0 0 10px #00ff88;
+}
+
+/* Hero Section */
+.hero {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2rem;
+    padding: 2rem 0;
+}
+
+/* Cards */
+.card {
+    position: relative;
+    width: 320px;
+    height: 480px;
+    background: var(--card-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    text-align: center;
+    transition: all 0.3s ease;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.cardContent {
+    z-index: 2;
+}
+
+/* Neon Glows based on candidate */
+.cardA:hover {
+    box-shadow: 0 0 30px rgba(0, 210, 255, 0.2);
+    border-color: var(--primary);
+}
+
+.cardB:hover {
+    box-shadow: 0 0 30px rgba(157, 0, 255, 0.2);
+    border-color: var(--secondary);
+}
+
+.avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    margin-bottom: 1.5rem;
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 3rem;
+    border: 2px solid var(--glass-border);
+}
+
+.card h2 {
+    font-size: 1.5rem;
+    margin-bottom: 0.5rem;
+    font-family: var(--font-monument-bold);
+}
+
+.card p {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.voteBtn {
+    width: 100%;
+    padding: 1rem;
+    border: none;
+    border-radius: 8px;
+    font-family: var(--font-monument-bold);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.cardA .voteBtn:hover {
+    background: var(--primary);
+    color: black;
+    box-shadow: 0 0 20px var(--primary);
+}
+
+.cardB .voteBtn:hover {
+    background: var(--secondary);
+    color: white;
+    box-shadow: 0 0 20px var(--secondary);
+}
+
+/* Logs & Stats */
+.dashboardGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    width: 100%;
+}
+
+.panel {
+    background: #0f0f12;
+    border: 1px solid var(--glass-border);
+    border-radius: var(--border-radius);
+    padding: 1.5rem;
+}
+
+.panelTitle {
+    font-family: var(--font-monument-bold);
+    margin-bottom: 1rem;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.resultsBar {
+    height: 24px;
+    background: #222;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    display: flex;
+}
+
+.barSegment {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: bold;
+    color: white;
+    transition: width 0.5s ease;
+}
+
+.logs {
+    max-height: 150px;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+.logItem {
+    padding: 4px 0;
+    border-bottom: 1px solid #222;
+}
+
+.logHash {
+    color: var(--primary);
+}
+
