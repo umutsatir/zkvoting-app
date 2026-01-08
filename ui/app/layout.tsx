@@ -3,7 +3,7 @@ import { ZkappProvider } from "./contexts/ZkappContext";
 import "../styles/globals.css";
 
 export const metadata = {
-  title: 'Mina zkApp UI',
+  title: 'zkVoting App',
   description: 'built with o1js',
   icons: {
     icon: '/assets/favicon.ico',
