@@ -21,6 +21,8 @@ const state = {
   candidatesRoot: null as null | Field,
   electionId: Field(12345),
   pendingVoteProofs: [] as any[],
+  hasCompiled: false,
+  onChainCounts: null as null | { alice: number, bob: number },
 };
 
 // ---------------------------------------------------------------------------------------
@@ -30,7 +32,7 @@ export const api = {
     const Network = Mina.Network(
       "https://api.minascan.io/node/devnet/v1/graphql"
     );
-    console.log("Devnet network instance configured");
+    console.log("Devnet network instance configured (Worker v2.1: getVoteCounts enabled)");
     Mina.setActiveInstance(Network);
   },
 
@@ -43,12 +45,19 @@ export const api = {
     state.SettlementProgram = SettlementProgram;
     state.VotingContract = VotingContract;
   },
+  
+  async getIsCompiled() {
+      console.log("Worker: Checking compilation status:", state.hasCompiled);
+      return state.hasCompiled;
+  },
 
   async compileContract() {
-    // Compile in order
+    console.log("Worker: Starting compilation...");
     await state.VoteProofProgram!.compile();
     await state.SettlementProgram!.compile();
     await state.VotingContract!.compile();
+    state.hasCompiled = true;
+    console.log("Worker: Compilation Finished. State set to Compiled (true).");
   },
 
   async fetchAccount(publicKey58: string) {
@@ -60,11 +69,21 @@ export const api = {
   },
 
   async initZkappInstance(publicKey58: string) {
-    const publicKey = PublicKey.fromBase58(publicKey58);
+    let publicKey;
+    try {
+        publicKey = PublicKey.fromBase58(publicKey58);
+    } catch (e) {
+        throw new Error(`Invalid Public Key format: ${publicKey58}. Ensure no spaces or invalid characters.`);
+    }
+
     state.zkappInstance = new state.VotingContract!(publicKey);
     
     // Initialize Mock Trees for Demo
     this.initTrees();
+    
+    // Attempt to sync with actual on-chain root if possible (Optimistic Sync)
+    // In a real app, we would fetch the leaves from an Event Indexer.
+    // Here, we can only trust our localStorage restoration or start empty.
   },
 
   // Mock Data Setup
@@ -88,6 +107,12 @@ export const api = {
     // 3. Results Tree
     const resultsTree = new MerkleTree(32);
     state.resultsTree = resultsTree;
+    
+    // Initialize OnChain Counts to match
+    state.onChainCounts = {
+        alice: Number(resultsTree.getNode(0, 1n).toBigInt()),
+        bob: Number(resultsTree.getNode(0, 2n).toBigInt())
+    };
   },
 
   async getResultsRoot() {
@@ -95,9 +120,47 @@ export const api = {
     return JSON.stringify(currentRoot.toJSON());
   },
 
+  async getLocalResultsRoot() {
+    const localRoot = state.resultsTree!.getRoot();
+    return JSON.stringify(localRoot.toJSON());
+  },
+
+  async getVoteCounts(syncConfirmed: boolean = false) {
+      console.log("Worker: Fetching vote counts...", syncConfirmed ? "(Syncing)" : "(Cached/Optimistic)");
+      
+      // We always read from the local tree which might have advanced ahead of the chain (Pending votes processed)
+      // or perfectly synced with chain.
+      // This gives the "Live Results" the user wants.
+      const valA = Number(state.resultsTree!.getNode(0, 1n).toBigInt());
+      const valB = Number(state.resultsTree!.getNode(0, 2n).toBigInt());
+      
+      // Update cache
+      state.onChainCounts = { alice: valA, bob: valB };
+      
+      return state.onChainCounts;
+  },
+
+  async restoreState(aliceCount: number, bobCount: number) {
+      console.log(`Worker: Restoring state -> Alice: ${aliceCount}, Bob: ${bobCount}`);
+      // Rebuild Tree
+      state.resultsTree!.setLeaf(1n, Field(aliceCount));
+      state.resultsTree!.setLeaf(2n, Field(bobCount));
+      
+      // Update cache
+      state.onChainCounts = { alice: aliceCount, bob: bobCount };
+      
+      const restoredRoot = state.resultsTree!.getRoot();
+      console.log(`Worker: State Restored. New Local Root: ${restoredRoot.toString()}`);
+  },
+
+  async restorePendingVotes(pendingJSON: any[]) {
+      console.log(`Worker: Restoring ${pendingJSON.length} pending votes from cache...`);
+      state.pendingVoteProofs = pendingJSON;
+  },
+
   // The Main Action: Vote -> Tally -> Settle
   // 4. Pending Votes Queue (Mock Celestia)
-    pendingVoteProofs: [] as { proof: JsonProof, publicInput: any, candidateId: number }[],
+    pendingVoteProofs: [] as { proof: JsonProof, candidateId: number }[],
 
   async fetchPendingVotes() {
     return state.pendingVoteProofs;
@@ -208,11 +271,10 @@ export const api = {
     // Store in Pending
     state.pendingVoteProofs.push({
         proof: voteProof.toJSON(),
-        publicInput: votePublicInput, // JSON?
         candidateId: candidateId
     });
     
-    return "Proof Submitted to Storage (Simulated Celestia). Pending Aggregation.";
+    return voteProof.toJSON();
   },
 
   async proveTransaction() {

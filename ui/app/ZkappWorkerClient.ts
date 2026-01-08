@@ -6,7 +6,7 @@ export default class ZkappWorkerClient {
   remoteApi: Comlink.Remote<typeof import('./ZkappWorker').api>; 
 
   constructor() {
-    const worker = new Worker(new URL('./zkappWorker.ts', import.meta.url), { type: 'module' });  
+    const worker = new Worker(new URL('./ZkappWorker.ts', import.meta.url), { type: 'module' });  
     this.remoteApi = Comlink.wrap(worker);
   }  
 
@@ -22,6 +22,10 @@ export default class ZkappWorkerClient {
     return this.remoteApi.compileContract();
   }
 
+  async getIsCompiled() {
+      return this.remoteApi.getIsCompiled();
+  }
+
   async fetchAccount(publicKeyBase58: string) {
     return this.remoteApi.fetchAccount(publicKeyBase58);
   }
@@ -34,8 +38,24 @@ export default class ZkappWorkerClient {
     return this.remoteApi.getResultsRoot();
   }
 
+  async getLocalResultsRoot(): Promise<string> {
+      return this.remoteApi.getLocalResultsRoot();
+  }
+
+  async getVoteCounts(syncConfirmed: boolean = false) {
+    return this.remoteApi.getVoteCounts(syncConfirmed);
+  }
+
+  async restoreState(alice: number, bob: number) {
+      return this.remoteApi.restoreState(alice, bob);
+  }
+
+  async restorePendingVotes(pending: any[]) {
+      return this.remoteApi.restorePendingVotes(pending);
+  }
+
   async castVote(candidateId: number) {
-    return this.remoteApi.castVote(candidateId);
+    return await this.remoteApi.castVote(candidateId);
   }
 
   async proveTransaction() {

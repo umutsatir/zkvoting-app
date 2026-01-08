@@ -1,393 +1,260 @@
 'use client';
-import Head from 'next/head';
-import Image from 'next/image';
-import {useCallback, useEffect, useState} from 'react';
+import { useState, useEffect } from 'react';
 import styles from '../styles/Home.module.css';
-import ZkappWorkerClient from "./ZkappWorkerClient"
+import { useZkappContext } from './contexts/ZkappContext';
+import { useRouter } from 'next/navigation';
 
 import './reactCOIServiceWorker';
 
 export default function Home() {
-  
-  const [zkappWorkerClient, setZkappWorkerClient] = useState<null | ZkappWorkerClient>(null); 
-  const [zkAppAddress, setZkAppAddress] = useState<string | null>(null);
-  
-  const [resultsRoot, setResultsRoot] = useState<string | null>(null);
-  const [status, setStatus] = useState<string>("Initializing...");
-  const [logs, setLogs] = useState<string[]>([]);
-  const [isVoting, setIsVoting] = useState<boolean>(false);
-  const [hasVoted, setHasVoted] = useState<boolean>(false);
-  const [isCompiling, setIsCompiling] = useState<boolean>(false);
-  const [inputAddress, setInputAddress] = useState<string>("");
-  
-  const addLog = (msg: string) => {
-    const time = new Date().toLocaleTimeString();
-    setLogs(prev => [`[${time}] ${msg}`, ...prev]);
-  };
+    const { 
+        isWorkerReady, 
+        isCompiling, 
+        deployContract, 
+        fetchAccount,
+        connect,
+        status
+    } = useZkappContext();
 
-  useEffect(() => {
-    (async () => {
-      const zkappWorkerClient = new ZkappWorkerClient();
-      setZkappWorkerClient(zkappWorkerClient);
+    const router = useRouter();
+    const [inputAddress, setInputAddress] = useState<string>("");
+    const [savedContracts, setSavedContracts] = useState<string[]>([]);
 
-      setStatus("Loading Contracts...");
-      addLog("Loading Worker...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      
-      await zkappWorkerClient.setActiveInstanceToDevnet();
-      await zkappWorkerClient.loadContract();
-      
-      setStatus("Waiting for Compilation...");
-      addLog("Contracts Loaded. Ready to Compile.");
-    })();
-  }, []);
-
-  const compileAndInit = async (address: string) => {
-      if(!zkappWorkerClient) return;
-      
-      setStatus("Compiling Circuits...");
-      setIsCompiling(true);
-      addLog("Compiling VoteProof & Settlement Circuits (Heavy Load)...");
-      try {
-        await zkappWorkerClient.compileContract();
-        addLog("Compilation Complete.");
-        
-        setStatus("Syncing...");
-        await zkappWorkerClient.initZkappInstance(address);
-        const res = await zkappWorkerClient.fetchAccount(address);
-        if (res.error) {
-            throw new Error(`Fetch Account Error: ${res.error}`);
+    useEffect(() => {
+        const saved = localStorage.getItem('zkvoting-contracts');
+        if (saved) {
+            try {
+              setSavedContracts(JSON.parse(saved));
+            } catch(e) { console.error("Failed to parse saved contracts", e); }
         }
-        addLog("Account state fetched.");
-        
-        const root = await zkappWorkerClient.getResultsRoot();
-        setResultsRoot(root);
-        setZkAppAddress(address);
-        setStatus("Connected");
-        addLog(`Synced with Election at ${address.slice(0, 8)}...`);
-      } catch(e: any) {
-          console.error(e);
-          setStatus("Connection Failed");
-          addLog("Error connecting to contract: " + e.message);
-      } finally {
-          setIsCompiling(false);
-      }
-  };
+    }, []);
 
-  const onDeploy = async () => {
-    if(!zkappWorkerClient) return;
-    
-    setStatus("Preparing Deployment...");
-    setIsCompiling(true); // Treat as busy state
-    
-    try {
+    const [modalData, setModalData] = useState<{
+        type: 'DEPLOY' | 'NOT_READY',
+        hash?: string, 
+        addr?: string,
+        message?: string
+    } | null>(null);
+
+    const handleDeploy = async () => {
         const mina = (window as any).mina;
-        if (!mina) throw new Error("Auro Wallet not found");
+        if (!mina) return alert("Auro Wallet not found");
         const walletKey: string = (await mina.requestAccounts())[0];
         
-        // 1. Compile First (if not already)
-        addLog("Compiling Logic before Deployment...");
-        await zkappWorkerClient.compileContract();
-        addLog("Compiled.");
+        const resultJSON = await deployContract(walletKey);
         
-        // 2. Create Deploy Tx
-        addLog("Creating Deployment Transaction...");
-        const { transaction, zkAppAddress: newDetails } = await zkappWorkerClient.createDeployTransaction(walletKey);
-        
-        // 3. Send
-        addLog("Requesting Signature for Deployment...");
-        const { hash } = await mina.sendTransaction({ transaction });
-        
-        addLog(`Deploy Tx Sent: ${hash.slice(0, 8)}...`);
-        addLog(`New Election Address: ${newDetails}`);
-        
-        // 4. Initialize
-        await zkappWorkerClient.initZkappInstance(newDetails);
-        setZkAppAddress(newDetails);
-        setResultsRoot("0"); // Initial root
-        setStatus("Connected");
-        
-    } catch(e: any) {
-        console.error(e);
-        addLog("Deployment Error: " + e.message);
-        console.log(logs);
-        setStatus("Error");
-    } finally {
-        setIsCompiling(false);
-    }
-  };
-
-  // State
-  const [viewMode, setViewMode] = useState<'voter' | 'aggregator'>('voter');
-  const [pendingVotes, setPendingVotes] = useState<number>(0);
-  
-  // Checks
-  const isReady = status === "Connected";
-  const canVote = isReady && !isVoting && !hasVoted;
-
-  const onFetchPending = async () => {
-      if(!zkappWorkerClient) return;
-      const pending: any[] = await zkappWorkerClient.fetchPendingVotes();
-      setPendingVotes(pending.length);
-      addLog(`Fetched ${pending.length} pending votes from mocked Celestia DA.`);
-  };
-  
-  const onProcessAggregration = async () => {
-      if(pendingVotes === 0) return;
-      
-      setStatus("Aggregating...");
-      addLog("Starting Batch Aggregation (Recursive Proofs)...");
-      try {
-        const mina = (window as any).mina;
-        if (!mina) throw new Error("Auro Wallet not found");
-        const walletKey: string = (await mina.requestAccounts())[0];
-          
-        await zkappWorkerClient!.processPendingVotes();
-        addLog("Batch Aggregation Complete. Generating Settlement Tx...");
-        
-        await zkappWorkerClient!.proveTransaction();
-        const transactionJSON = await zkappWorkerClient!.getTransactionJSON();
-        
-        addLog("Requesting Settlement Signature...");
-        const { hash } = await mina.sendTransaction({ transaction: transactionJSON });
-        
-        addLog(`Settlement Tx Sent: ${hash.slice(0, 8)}...`);
-        setStatus("Results Updated");
-        setPendingVotes(0); // Clear local pending view
-        
-      } catch(e: any) {
-          console.error(e);
-          setStatus("Aggregation Failed");
-          addLog("Error: " + e.message);
-      }
-  };
-
-  const onCastVote = useCallback(async (candidateId: number, name: string) => {
-    if (isVoting || hasVoted) return;
-
-    setIsVoting(true);
-    setStatus(`Voting for ${name}...`);
-    addLog(`Generating Proof for ${name}...`);
-
-    try {
-      await zkappWorkerClient!.castVote(candidateId);
-      addLog(`Vote Proof Generated & Sent to DA Layer.`);
-      setStatus("Proof Submitted");
-      setHasVoted(true);
-    } catch (e: any) {
-      console.error(e);
-      addLog(`Error: ${e.message}`);
-      setStatus("Error");
-    } finally {
-        setIsVoting(false);
-    }
-  }, [zkappWorkerClient, hasVoted, isVoting]);
-
-  return (
-    <>
-      <Head>
-        <title>ZK Voting App</title>
-        <meta name="description" content="Scalable ZK Voting on Mina" />
-      </Head>
-      
-      <main className={styles.main}>
-        {/* Header */}
-        <header className={styles.header}>
-            <h1>ZK Voting App</h1>
+        if (resultJSON) {
+            // Sign and Send
+            const { transaction, newAddr } = JSON.parse(resultJSON);
+            const { hash } = await mina.sendTransaction({ transaction });
+            console.log("Deployed:", hash);
             
-             {/* View Switcher */}
-            {isReady && (
-                <div style={{display: 'flex', gap: '10px', marginLeft: '20px', background: 'rgba(255,255,255,0.1)', padding: '5px', borderRadius: '20px'}}>
-                    <button 
-                        onClick={() => setViewMode('voter')}
-                        style={{
-                            background: viewMode === 'voter' ? 'var(--primary)' : 'transparent',
-                            color: viewMode === 'voter' ? 'black' : 'var(--text-muted)',
-                            border: 'none', padding: '5px 15px', borderRadius: '15px', cursor: 'pointer'
-                        }}
-                    >
-                        Voter View
-                    </button>
-                    <button 
-                         onClick={() => setViewMode('aggregator')}
-                         style={{
-                            background: viewMode === 'aggregator' ? 'var(--secondary)' : 'transparent',
-                            color: viewMode === 'aggregator' ? 'white' : 'var(--text-muted)',
-                            border: 'none', padding: '5px 15px', borderRadius: '15px', cursor: 'pointer'
-                        }}
-                    >
-                        Aggregator View
-                    </button>
-                </div>
-            )}
+            // Optimistic UX: Add to Recent Elections immediately
+            const saved = localStorage.getItem('zkvoting-contracts');
+            let contracts = saved ? JSON.parse(saved) : [];
+            if (!contracts.includes(newAddr)) {
+                contracts = [newAddr, ...contracts].slice(0, 5);
+                localStorage.setItem('zkvoting-contracts', JSON.stringify(contracts));
+                setSavedContracts(contracts);
+            }
+            
+            // Show Modal
+            setModalData({ type: 'DEPLOY', hash, addr: newAddr });
+        }
+    };
 
-            <div className={styles.statusBadge} style={{marginLeft: 'auto'}}>
-                <div className={styles.statusDot} style={{background: isReady ? '#00ff88' : '#ffaa00', boxShadow: `0 0 10px ${isReady ? '#00ff88' : '#ffaa00'}`}}></div>
-                <span>{status}</span>
-            </div>
-        </header>
+    const handleJoin = async (addr: string) => {
+        try {
+            await connect(addr);
+            router.push(`/vote?contract=${addr}`);
+        } catch (e: any) {
+            console.error("Join Error:", e);
+            const msg = e.message || JSON.stringify(e);
+            if (msg.includes("does not exist") || msg.includes("fetchAccount")) {
+                setModalData({ type: 'NOT_READY' });
+            } else {
+                alert("Connection failed: " + msg);
+            }
+        }
+    };
 
-        {/* Dynamic Content */}
-        {!zkAppAddress ? (
-            <div className={styles.center}>
-                <div className={styles.card} style={{width: '400px', cursor: 'default', height: 'auto'}}>
-                    <h2>Welcome</h2>
-                    <p style={{marginBottom: '20px'}}>Deploy a new ZK Election or join an existing one.</p>
-                    
-                    <button 
-                        className={styles.voteBtn} 
-                        onClick={onDeploy}
-                        disabled={isCompiling}
-                        style={{marginBottom: '1rem', background: 'var(--primary)', color: 'black'}}
-                    >
-                        {isCompiling ? "Processing..." : "Create New Election"}
-                    </button>
-                    
-                    <div style={{display: 'flex', gap: '10px', alignItems: 'center', width: '100%'}}>
-                        <input 
-                            type="text" 
-                            placeholder="Existing Contract Address..." 
-                            value={inputAddress}
-                            onChange={(e) => setInputAddress(e.target.value)}
-                            style={{
-                                flex: 1, 
-                                padding: '10px', 
-                                borderRadius: '8px', 
-                                border: '1px solid var(--glass-border)', 
-                                background: 'rgba(0,0,0,0.3)',
-                                color: 'white'
-                            }}
-                        />
+    const clearRecent = () => {
+        if(confirm("Are you sure you want to clear your recent elections history?")) {
+            localStorage.removeItem('zkvoting-contracts');
+            setSavedContracts([]);
+        }
+    };
+
+    return (
+        <main className={styles.main}>
+             {modalData && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', 
+                    background: 'rgba(0,0,0,0.8)', zIndex: 1000, 
+                    display: 'flex', justifyContent: 'center', alignItems: 'center'
+                }}>
+                    <div className={styles.card} style={{width: '500px', height: 'auto', textAlign: 'center', position: 'relative', background: '#111'}}>
                         <button 
-                             className={styles.voteBtn}
-                             onClick={() => compileAndInit(inputAddress)}
-                             disabled={isCompiling || !inputAddress}
-                             style={{width: 'auto', padding: '10px 20px'}}
+                            onClick={() => setModalData(null)}
+                            style={{position: 'absolute', top: '15px', right: '15px', background: 'transparent', border: 'none', color: '#666', fontSize: '1.2rem', cursor: 'pointer'}}
+                        >✕</button>
+                        
+                        {modalData.type === 'DEPLOY' ? (
+                            <>
+                                <div style={{fontSize: '3rem', marginBottom: '10px'}}>🚀</div>
+                                <h2 style={{color: '#00ff88', marginBottom: '10px'}}>Deployment Initiated!</h2>
+                                <p style={{marginBottom: '20px', color: '#ccc'}}>
+                                    Your election contract has been broadcast to the Mina network.
+                                </p>
+                                
+                                <div style={{background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px', marginBottom: '20px', textAlign: 'left'}}>
+                                    <div style={{fontSize: '0.8rem', color: '#888', marginBottom: '5px'}}>Contract Address:</div>
+                                    <div style={{fontFamily: 'monospace', wordBreak: 'break-all', color: 'white', marginBottom: '15px'}}>
+                                        {modalData.addr}
+                                    </div>
+                                    
+                                    <div style={{fontSize: '0.8rem', color: '#888', marginBottom: '5px'}}>Transaction Hash:</div>
+                                    <div style={{fontFamily: 'monospace', wordBreak: 'break-all', color: '#aaa'}}>
+                                        {modalData.hash}
+                                    </div>
+                                </div>
+                                
+                                <div style={{fontSize: '0.9rem', color: '#ffaa00', marginBottom: '25px', background: 'rgba(255,170,0,0.1)', padding: '10px', borderRadius: '5px'}}>
+                                    ⚠️ Please save these details. Wait approx 3-4 mins for block confirmation before joining.
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div style={{fontSize: '3rem', marginBottom: '10px'}}>⏳</div>
+                                <h2 style={{color: '#ffaa00', marginBottom: '10px'}}>Contract Not Ready</h2>
+                                <p style={{marginBottom: '20px', color: '#ccc'}}>
+                                    Verification key not found on-chain yet.
+                                </p>
+                                
+                                <div style={{fontSize: '0.9rem', color: '#888', marginBottom: '25px', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px'}}>
+                                    If you just deployed this contract, it typically takes <strong>3-4 minutes</strong> for the block to be included in the blockchain.<br/><br/>
+                                    Please wait a moment and try joining again.
+                                </div>
+                            </>
+                        )}
+                        
+                        <button 
+                            className={styles.voteBtn}
+                            onClick={() => setModalData(null)}
+                            style={{background: 'var(--primary)', color: 'black'}}
                         >
-                            Join
+                            Got it, thanks!
                         </button>
                     </div>
                 </div>
-            </div>
-        ) : (
-            <>
-                <div style={{textAlign: 'center', marginBottom: '1rem', color: '#666', fontSize: '0.8rem'}}>
-                    Election Contract: {zkAppAddress}
+             )}
+
+             <header className={styles.header}>
+                <h1 onClick={() => router.push('/')} style={{cursor: 'pointer'}}>ZK Voting App</h1>
+                <div className={styles.statusBadge}>
+                    <div className={styles.statusDot} style={{background: isWorkerReady ? '#00ff88' : '#ffaa00'}}></div>
+                    <span>{status}</span>
                 </div>
-                
-                {/* VOTER VIEW */}
-                {viewMode === 'voter' && (
-                <section className={styles.hero}>
-                    <div 
-                        className={`${styles.card} ${styles.cardA}`} 
-                        onClick={() => canVote && onCastVote(1, "Alice")}
-                        style={{
-                            opacity: canVote ? 1 : 0.5, 
-                            cursor: canVote ? 'pointer' : 'not-allowed',
-                            pointerEvents: canVote ? 'auto' : 'none'
-                        }}
-                    >
-                        <div className={styles.cardContent}>
-                            <div className={styles.avatar} style={{borderColor: 'var(--primary)', color: 'var(--primary)'}}>
-                                A
-                            </div>
-                            <h2>Alice</h2>
-                            <p style={{marginBottom: '2rem'}}>The Visionary.<br/>Advocating for a decentralized future.</p>
-                            <button className={styles.voteBtn} disabled={!canVote}>
-                                {hasVoted ? "Proof Submitted" : isVoting ? "Proving..." : isReady ? "Vote for Alice" : "Loading..."}
+            </header>
+            
+            {/* Rest of the component... */}
+            <div className={styles.center}>
+                <div className={styles.card} style={{width: '400px', cursor: 'default', height: 'auto', minHeight: '300px', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
+                    {isCompiling || !isWorkerReady ? (
+                        <div style={{textAlign: 'center', padding: '2rem'}}>
+                            <div className={styles.spinner} style={{margin: '0 auto 20px auto'}}></div>
+                            <h2 style={{fontSize: '1.5rem', marginBottom: '10px'}}>Processing...</h2>
+                            <p style={{color: '#888', marginBottom: '20px'}}>
+                                {status}
+                            </p>
+                        </div>
+                    ) : (
+                        <>
+                            <h2>Welcome</h2>
+                            <p style={{marginBottom: '20px'}}>Deploy a new ZK Election or join an existing one.</p>
+                            
+                            <button 
+                                className={styles.voteBtn} 
+                                onClick={handleDeploy}
+                                disabled={isCompiling || !isWorkerReady}
+                                style={{marginBottom: '1rem', background: 'var(--primary)', color: 'black', opacity: !isWorkerReady ? 0.5 : 1}}
+                            >
+                                Create New Election
                             </button>
-                        </div>
-                    </div>
-
-                    <div 
-                        className={`${styles.card} ${styles.cardB}`} 
-                        onClick={() => canVote && onCastVote(2, "Bob")}
-                        style={{
-                            opacity: canVote ? 1 : 0.5, 
-                            cursor: canVote ? 'pointer' : 'not-allowed',
-                            pointerEvents: canVote ? 'auto' : 'none'
-                        }}
-                    >
-                        <div className={styles.cardContent}>
-                            <div className={styles.avatar} style={{borderColor: 'var(--secondary)', color: 'var(--secondary)'}}>
-                                B
+                            
+                            <div style={{display: 'flex', gap: '10px', alignItems: 'center', width: '100%'}}>
+                                <input 
+                                    type="text" 
+                                    placeholder="Existing Contract Address..." 
+                                    value={inputAddress}
+                                    onChange={(e) => setInputAddress(e.target.value)}
+                                    style={{
+                                        flex: 1, 
+                                        padding: '10px', 
+                                        borderRadius: '8px', 
+                                        border: '1px solid var(--glass-border)', 
+                                        background: 'rgba(0,0,0,0.3)',
+                                        color: 'white'
+                                    }}
+                                />
+                                <button 
+                                     className={styles.voteBtn}
+                                     onClick={() => handleJoin(inputAddress.trim())}
+                                     disabled={isCompiling || !inputAddress || !isWorkerReady}
+                                     style={{width: 'auto', padding: '10px 20px', opacity: !isWorkerReady ? 0.5 : 1}}
+                                >
+                                    Join
+                                </button>
                             </div>
-                            <h2>Bob</h2>
-                            <p style={{marginBottom: '2rem'}}>The Builder.<br/>Focused on infrastructure and scale.</p>
-                            <button className={styles.voteBtn} disabled={!canVote}>
-                                {hasVoted ? "Proof Submitted" : isVoting ? "Proving..." : isReady ? "Vote for Bob" : "Loading..."}
-                            </button>
-                        </div>
-                    </div>
-                </section>
-                )}
-                
-                {/* AGGREGATOR VIEW */}
-                {viewMode === 'aggregator' && (
-                    <section className={styles.hero} style={{flexDirection: 'column', alignItems: 'center'}}>
-                         <div className={styles.card} style={{width: '600px', height: 'auto', cursor: 'default'}}>
-                             <h2>🗳️ Election Aggregator</h2>
-                             <p style={{marginBottom: '20px', color: '#888'}}>
-                                 Fetch pending proofs from the Data Availability layer and settle them on Mina.
-                             </p>
-                             
-                             <div style={{display: 'flex', gap: '20px', justifyContent: 'center', marginBottom: '20px'}}>
-                                 <div style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '10px', minWidth: '150px'}}>
-                                     <h3>Pending</h3>
-                                     <div style={{fontSize: '3rem', fontWeight: 'bold', color: 'var(--primary)'}}>{pendingVotes}</div>
-                                     <div>Votes</div>
-                                 </div>
-                                  <div style={{background: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '10px', minWidth: '150px'}}>
-                                     <h3>On Chain</h3>
-                                     <div style={{fontSize: '3rem', fontWeight: 'bold', color: 'white'}}>?</div>
-                                     <div>Verified</div>
-                                 </div>
-                             </div>
-                             
-                             <div style={{display: 'flex', gap: '10px'}}>
-                                 <button className={styles.voteBtn} onClick={onFetchPending}>
-                                     🔄 Fetch from Celestia
-                                 </button>
-                                 <button 
-                                     className={styles.voteBtn} 
-                                     style={{background: 'var(--secondary)', color: 'white'}}
-                                     onClick={onProcessAggregration}
-                                     disabled={pendingVotes === 0}
-                                 >
-                                     ⚡ Aggregate & Settle
-                                 </button>
-                             </div>
-                         </div>
-                    </section>
-                )}
 
-                {/* Dashboard Bottom */}
-                <section className={styles.dashboardGrid}>
-                    <div className={styles.panel}>
-                        <div className={styles.panelTitle}>Live Results (Simulation)</div>
-                        {/* Visual Fake Bar for Demo */}
-                        <div className={styles.resultsBar}>
-                            <div className={styles.barSegment} style={{width: '50%', background: 'var(--primary)'}}>Alice 50%</div>
-                            <div className={styles.barSegment} style={{width: '50%', background: 'var(--secondary)'}}>Bob 50%</div>
-                        </div>
-                        <div style={{marginTop: '1rem', fontSize: '0.8rem', color: '#666'}}>
-                            On-Chain Root: {resultsRoot ? resultsRoot.slice(0, 16) + "..." : "Syncing..."}
-                        </div>
-                    </div>
-
-                    <div className={styles.panel}>
-                        <div className={styles.panelTitle}>Blockchain Logs</div>
-                        <div className={styles.logs}>
-                            {logs.map((log, i) => (
-                                <div key={i} className={styles.logItem}>{log}</div>
-                            ))}
-                            {logs.length === 0 && <span style={{opacity: 0.3}}>Waiting for activity...</span>}
-                        </div>
-                    </div>
-                </section>
-            </>
-        )}
-      </main>
-    </>
-  );
+                            {savedContracts.length > 0 && (
+                                <div style={{marginTop: '2rem', width: '100%'}}>
+                                    <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px'}}>
+                                        <div style={{fontSize: '0.8rem', color: '#888'}}>Recent Elections:</div>
+                                        <button 
+                                            onClick={clearRecent} 
+                                            style={{background: 'none', border: 'none', cursor: 'pointer', fontSize: '1rem', padding: '0 5px', opacity: 0.6, transition: 'opacity 0.2s'}}
+                                            onMouseOver={(e) => e.currentTarget.style.opacity = '1'}
+                                            onMouseOut={(e) => e.currentTarget.style.opacity = '0.6'}
+                                            title="Clear List"
+                                        >
+                                            🗑️
+                                        </button>
+                                    </div>
+                                    <div style={{display: 'flex', flexDirection: 'column', gap: '5px'}}>
+                                        {savedContracts.map(addr => (
+                                            <button 
+                                                key={addr}
+                                                onClick={() => {
+                                                    setInputAddress(addr);
+                                                    if(isWorkerReady) handleJoin(addr);
+                                                }}
+                                                disabled={isCompiling || !isWorkerReady}
+                                                style={{
+                                                    background: 'rgba(255,255,255,0.05)', 
+                                                    border: '1px solid rgba(255,255,255,0.1)', 
+                                                    padding: '8px', 
+                                                    borderRadius: '5px',
+                                                    color: '#aaa',
+                                                    cursor: (isCompiling || !isWorkerReady) ? 'wait' : 'pointer',
+                                                    textAlign: 'left',
+                                                    fontSize: '0.8rem',
+                                                    transition: 'all 0.2s',
+                                                    display: 'flex', justifyContent: 'space-between',
+                                                    opacity: !isWorkerReady ? 0.5 : 1
+                                                }}
+                                            >
+                                                <span>{addr.slice(0, 10)}...{addr.slice(-10)}</span>
+                                                <span>→</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </div>
+        </main>
+    );
 }
