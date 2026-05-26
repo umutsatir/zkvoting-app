@@ -1,0 +1,97 @@
+{
+  "_format": "hh-sol-artifact-1",
+  "contractName": "Errors",
+  "sourceName": "src/Verifier.sol",
+  "abi": [
+    {
+      "inputs": [],
+      "name": "ConsistencyCheckFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "GeminiChallengeInSubgroup",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "InvertOfZero",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ModExpFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NotPowerOfTwo",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PointAtInfinity",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ProofLengthWrong",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "logN",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "actualLength",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "expectedLength",
+          "type": "uint256"
+        }
+      ],
+      "name": "ProofLengthWrongWithLogN",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PublicInputsLengthWrong",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ShpleminiFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "SumcheckFailed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ValueGeFieldOrder",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ValueGeGroupOrder",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ValueGeLimbMax",
+      "type": "error"
+    }
+  ],
+  "bytecode": "0x602c6032600b8282823980515f1a607314602657634e487b7160e01b5f525f60045260245ffd5b305f52607381538281f3fe730000000000000000000000000000000000000000301460806040525f5ffdfea164736f6c634300081c000a",
+  "deployedBytecode": "0x730000000000000000000000000000000000000000301460806040525f5ffdfea164736f6c634300081c000a",
+  "linkReferences": {},
+  "deployedLinkReferences": {}
+}

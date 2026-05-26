@@ -1,0 +1,23 @@
+{
+  "name": "zkvoting-scripts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "create-election": "ts-node create-election.ts",
+    "generate-proof": "ts-node generate-test-proof.ts",
+    "verify-on-chain": "ts-node verify-on-chain.ts",
+    "e2e-test": "ts-node e2e-test.ts"
+  },
+  "dependencies": {
+    "@aztec/bb.js": "^4.2.1",
+    "@noble/curves": "^1.4.2",
+    "@noble/hashes": "^1.4.0",
+    "@noir-lang/noir_js": "^1.0.0-beta.21",
+    "ethers": "^6.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  }
+}

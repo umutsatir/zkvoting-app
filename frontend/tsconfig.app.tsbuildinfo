@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/main.tsx","./src/components/createelectionmodal.tsx","./src/components/resultschart.tsx","./src/components/votepanel.tsx","./src/lib/contracts.ts","./src/lib/merkle.ts","./src/lib/prover.ts","./src/lib/wagmiconfig.ts","./src/pages/election.tsx","./src/pages/home.tsx"],"version":"5.9.3"}

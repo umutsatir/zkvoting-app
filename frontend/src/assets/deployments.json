@@ -1,0 +1,10 @@
+{
+  "network": "sepolia",
+  "deployedAt": "2026-05-24T09:43:13.008Z",
+  "deployer": "0x6B881932572c051a629C561Dc79ca4CE26A730ec",
+  "contracts": {
+    "ZKTranscriptLib": "0x7385a7d8fFc3C667C008Bf6255fde2044e497690",
+    "HonkVerifier": "0x987C47a28d9EeF82CF16EA7bEC24C129B062dd67",
+    "ElectionFactory": "0x04dd71C19B064737EA8108a12D0B5e8Ba0B2796a"
+  }
+}

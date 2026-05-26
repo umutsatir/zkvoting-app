@@ -1,0 +1,22 @@
+[package]
+name = "vote"
+type = "bin"
+authors = [""]
+# NOTE: noir-plume (distributed-lab/noir-plume v2.0.0) is NOT compatible with
+# nargo 1.0.0-beta.13 — bignum/bigcurve depend on APIs changed in the beta
+# series (~30 compile errors). The circuit below uses a Poseidon2-based
+# nullifier as a stand-in; swap in plume::plume_v1 once bignum ships a
+# nargo 1.x-compatible release (expected with nargo 1.0.0 stable).
+#
+# noir-plume target dependency (uncomment when compatible):
+# plume = { git = "https://github.com/distributed-lab/noir-plume", tag = "v2.0.0", directory = "crates/plume" }
+
+compiler_version = ">=0.36.0"
+
+[dependencies]
+# keccak256 — Ethereum address derivation (keccak256(pk.x || pk.y)[12:])
+keccak256 = { git = "https://github.com/noir-lang/keccak256", tag = "v0.1.3" }
+# sha256 is NOT used: noir-lang/sha256 v0.2.1+ triggers a nargo 1.0.0-beta.13
+# Brillig-constraint bug in non-trivial call chains.  The nullifier uses the
+# builtin blake2s (std::hash::blake2s) instead -- same 32-byte output, no
+# external dependency, identical security properties for our purposes.
