@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { toBytes, bytesToHex, type Address } from "viem";
+import { toBytes, type Address } from "viem";
 import { secp256k1 } from "@noble/curves/secp256k1";
 import { generateVoteProof } from "../lib/prover";
 import { buildMerkleTree, getVoterProof } from "../lib/merkle";
@@ -23,6 +23,13 @@ type ProofStatus =
   | { state: "waiting" }
   | { state: "success"; txHash: `0x${string}` }
   | { state: "error"; message: string };
+
+const STEPS = [
+  { key: "building_tree", label: "Building Merkle tree" },
+  { key: "proving",       label: "Generating ZK proof" },
+  { key: "sending",       label: "Sending transaction" },
+  { key: "waiting",       label: "Waiting for confirmation" },
+];
 
 export default function VotePanel({
   electionAddress,
@@ -60,7 +67,6 @@ export default function VotePanel({
     }
 
     try {
-      // Parse private key
       const skHex = (privateKey.startsWith("0x") ? privateKey.slice(2) : privateKey).trim();
       if (skHex.length !== 64) {
         setStatus({ state: "error", message: "Private key must be 32 bytes (64 hex chars)." });
@@ -68,28 +74,20 @@ export default function VotePanel({
       }
       const skBytes = Array.from(toBytes("0x" + skHex));
 
-      // Derive public key (uncompressed, skip 0x04 prefix)
       const pubKey = secp256k1.getPublicKey(BigInt("0x" + skHex), false);
       const pk_x = Array.from(pubKey.slice(1, 33));
       const pk_y = Array.from(pubKey.slice(33, 65));
 
-      // election_id as [u8; 32]
       const electionIdBytes = Array.from(toBytes(electionId as `0x${string}`, { size: 32 }));
 
-      // ECDSA signature over blake2s(election_id)
-      // We can't call blake2s from JS directly, but we can use a hash of election_id.
-      // For the circuit: msg_hash = std::hash::blake2s(election_id)
-      // We approximate blake2s with a noble-hashes import:
       const { blake2s } = await import("@noble/hashes/blake2s");
       const msgHash = blake2s(new Uint8Array(electionIdBytes), { dkLen: 32 });
       const sig = secp256k1.sign(msgHash, BigInt("0x" + skHex), { lowS: true });
       const ecdsa_sig = Array.from(sig.toCompactRawBytes());
 
-      // Nullifier = blake2s(sk_bytes || election_id)
       const preimage = new Uint8Array([...skBytes, ...electionIdBytes]);
       const nullifier = Array.from(blake2s(preimage, { dkLen: 32 }));
 
-      // Build Merkle tree and find voter
       setStatus({ state: "building_tree" });
       const { tree } = await buildMerkleTree(voterAddresses);
       const voterProof = await getVoterProof(tree, voterAddresses, connectedAddress as Address);
@@ -98,7 +96,6 @@ export default function VotePanel({
         return;
       }
 
-      // Generate ZK proof
       setStatus({ state: "proving" });
       const { proof, publicInputs } = await generateVoteProof({
         merkle_root: merkleRoot,
@@ -114,7 +111,6 @@ export default function VotePanel({
         merkle_indices: voterProof.indices,
       });
 
-      // Send transaction
       setStatus({ state: "sending" });
       const hash = await writeContractAsync({
         address: electionAddress,
@@ -133,39 +129,48 @@ export default function VotePanel({
   };
 
   const isLoading = ["building_tree", "proving", "sending", "waiting"].includes(status.state);
+  const currentStepIndex = STEPS.findIndex(s => s.key === status.state);
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-4">
-      <h3 className="font-semibold text-lg">Cast Your Vote</h3>
+    <div className="card p-5 space-y-5">
+      <h3 className="font-semibold text-lg text-white">Cast Your Vote</h3>
 
-      {/* Private key — demo only */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+      <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 text-xs text-amber-400">
         <strong>Demo only</strong> — never enter a real private key holding funds.
-        This is used only to generate the ZK proof locally; it never leaves your browser.
+        The proof is generated entirely in your browser; the key never leaves your device.
       </div>
-      <input
-        type="password"
-        className="input font-mono"
-        placeholder="Private key — with or without 0x prefix"
-        value={privateKey}
-        onChange={(e) => setPrivateKey(e.target.value.trim())}
-        disabled={isLoading}
-      />
-      <p className="text-xs text-gray-500">
-        64 hex characters, with or without <code>0x</code> prefix. Must correspond to a registered voter address.
-      </p>
 
-      {/* Candidate selection */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Private Key</label>
+        <input
+          type="password"
+          className="input font-mono"
+          placeholder="With or without 0x prefix"
+          value={privateKey}
+          onChange={(e) => setPrivateKey(e.target.value.trim())}
+          disabled={isLoading}
+        />
+        <p className="text-xs text-gray-600">
+          Must correspond to a registered voter address connected in MetaMask.
+        </p>
+      </div>
+
       <div className="space-y-2">
+        <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Candidate</label>
         {candidateNames.slice(0, numCandidates).map((name, i) => (
           <label
             key={i}
-            className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+            className={`flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-all ${
               selectedChoice === i
-                ? "border-indigo-500 bg-indigo-50"
-                : "border-gray-200 hover:border-gray-300"
+                ? "border-violet-500/40 bg-violet-500/10 text-white"
+                : "border-white/[0.06] bg-white/[0.02] text-gray-300 hover:border-white/10 hover:bg-white/[0.04]"
             }`}
           >
+            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+              selectedChoice === i ? "border-violet-500 bg-violet-500" : "border-gray-600"
+            }`}>
+              {selectedChoice === i && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+            </div>
             <input
               type="radio"
               name="candidate"
@@ -173,43 +178,59 @@ export default function VotePanel({
               checked={selectedChoice === i}
               onChange={() => setSelectedChoice(i)}
               disabled={isLoading}
-              className="accent-indigo-600"
+              className="sr-only"
             />
-            <span className="font-medium">{name || `Candidate ${i + 1}`}</span>
+            <span className="font-medium text-sm">{name || `Candidate ${i + 1}`}</span>
           </label>
         ))}
       </div>
 
-      {/* Status messages */}
-      {status.state === "building_tree" && (
-        <p className="text-sm text-blue-600 animate-pulse">Building Merkle tree...</p>
+      {/* Progress steps */}
+      {isLoading && (
+        <div className="space-y-2">
+          {STEPS.map((step, i) => {
+            const done = i < currentStepIndex;
+            const active = i === currentStepIndex;
+            return (
+              <div key={step.key} className={`flex items-center gap-2.5 text-sm transition-opacity ${
+                done || active ? "opacity-100" : "opacity-25"
+              }`}>
+                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-[10px] font-bold ${
+                  done ? "bg-emerald-500 text-white" :
+                  active ? "bg-violet-500 text-white" :
+                  "bg-white/10 text-gray-500"
+                }`}>
+                  {done ? "✓" : i + 1}
+                </div>
+                <span className={active ? "text-violet-300" : done ? "text-emerald-400" : "text-gray-500"}>
+                  {step.label}
+                  {active && step.key === "proving" && " (~10–30s)"}
+                  {active && <span className="ml-1 animate-pulse">…</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
       )}
-      {status.state === "proving" && (
-        <p className="text-sm text-blue-600 animate-pulse">
-          Generating ZK proof... (~10–30 seconds)
-        </p>
-      )}
-      {status.state === "sending" && (
-        <p className="text-sm text-blue-600 animate-pulse">Sending transaction...</p>
-      )}
-      {status.state === "waiting" && (
-        <p className="text-sm text-blue-600 animate-pulse">Waiting for confirmation...</p>
-      )}
+
       {status.state === "success" && (
-        <p className="text-sm text-green-600">
-          Vote cast! Tx:{" "}
+        <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-sm text-emerald-400">
+          Vote cast successfully!{" "}
           <a
             href={`https://sepolia.etherscan.io/tx/${status.txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="underline break-all"
+            className="underline font-mono text-xs break-all"
           >
-            {status.txHash}
+            {status.txHash.slice(0, 10)}…{status.txHash.slice(-6)}
           </a>
-        </p>
+        </div>
       )}
+
       {status.state === "error" && (
-        <p className="text-sm text-red-600">{status.message}</p>
+        <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-400 break-words">
+          {status.message}
+        </div>
       )}
 
       <button
@@ -217,7 +238,7 @@ export default function VotePanel({
         disabled={isLoading || selectedChoice === null || status.state === "success"}
         className="btn-primary w-full"
       >
-        {isLoading ? "Processing..." : "Generate Proof & Vote"}
+        {isLoading ? "Processing…" : "Generate Proof & Vote"}
       </button>
     </div>
   );

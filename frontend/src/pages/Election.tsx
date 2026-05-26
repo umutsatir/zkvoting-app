@@ -5,10 +5,6 @@ import { electionManagerAbi } from "../lib/contracts";
 import ResultsChart from "../components/ResultsChart";
 import VotePanel from "../components/VotePanel";
 
-// Candidate names aren't stored on-chain in this design.
-// In a real app you'd store them in an event or off-chain index.
-// Here we fall back to generic names — the ElectionPage can be extended
-// to accept names stored in localStorage keyed by electionId.
 function loadCandidateNames(electionId: string): string[] {
   try {
     const raw = localStorage.getItem(`election_names_${electionId}`);
@@ -47,16 +43,19 @@ export default function Election() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-500">Loading election...</p>
+      <div className="min-h-screen bg-[#0f1117] flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-400">
+          <div className="w-4 h-4 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+          Loading election...
+        </div>
       </div>
     );
   }
 
   if (!info) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-red-500">Could not load election data.</p>
+      <div className="min-h-screen bg-[#0f1117] flex items-center justify-center">
+        <p className="text-red-400">Could not load election data.</p>
       </div>
     );
   }
@@ -78,53 +77,67 @@ export default function Election() {
 
   const candidateNames = loadCandidateNames(electionId);
   const voterAddresses = loadVoterAddresses(electionId);
-
   const numCandidates = Number(candidates);
+
+  const names: Record<string, string> = JSON.parse(localStorage.getItem("zkvoting:names") ?? "{}");
+  const electionName = names[electionId] ?? "Election";
+
   const displayNames = candidateNames.length >= numCandidates
     ? candidateNames.slice(0, numCandidates)
     : Array.from({ length: numCandidates }, (_, i) => candidateNames[i] ?? `Candidate ${i + 1}`);
 
+  const statusLabel = isActive ? "Active" : hasStarted ? "Ended" : "Upcoming";
+  const statusStyle = isActive
+    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
+    : hasStarted
+    ? "bg-gray-500/15 text-gray-400 border border-gray-500/20"
+    : "bg-amber-500/15 text-amber-400 border border-amber-500/20";
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
-        <Link to="/" className="text-indigo-600 hover:underline text-sm">← Back</Link>
-        <h1 className="text-xl font-bold text-indigo-700">Election</h1>
+    <div className="min-h-screen bg-[#0f1117]">
+      <div className="fixed inset-0 bg-gradient-to-br from-violet-950/20 via-transparent to-indigo-950/20 pointer-events-none" />
+
+      <header className="relative bg-[#0f1117]/80 backdrop-blur-md px-6 py-4 flex items-center gap-4 border-b border-white/[0.04]">
+        <Link to="/" className="text-violet-400 hover:text-violet-300 text-sm transition-colors">
+          ← Back
+        </Link>
+        <div className="w-px h-4 bg-white/10" />
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-xs font-bold">
+            ZK
+          </div>
+          <span className="text-lg font-bold text-white">ZK Voting</span>
+        </div>
       </header>
 
-      <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-        {/* Election info */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5 space-y-2">
-          <div className="flex justify-between items-start">
+      <main className="relative max-w-2xl mx-auto px-4 py-10 space-y-5">
+        {/* Election info card */}
+        <div className="card p-5">
+          <div className="flex justify-between items-start mb-3">
             <div>
-              <p className="text-xs text-gray-400 font-mono break-all">{electionAddress}</p>
-              <p className="text-sm mt-1">
-                <span className="font-medium">{numCandidates}</span> candidate{numCandidates !== 1 ? "s" : ""}
-              </p>
+              <h1 className="text-xl font-bold text-white">{electionName}</h1>
+              <p className="font-mono text-xs text-gray-500 mt-1 break-all">{electionAddress}</p>
             </div>
-            <span
-              className={`text-xs font-semibold px-2 py-1 rounded-full ${
-                isActive
-                  ? "bg-green-100 text-green-700"
-                  : hasStarted
-                  ? "bg-gray-100 text-gray-600"
-                  : "bg-yellow-100 text-yellow-700"
-              }`}
-            >
-              {isActive ? "Active" : hasStarted ? "Ended" : "Upcoming"}
+            <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-3 ${statusStyle}`}>
+              {statusLabel}
             </span>
           </div>
 
-          <p className="text-sm text-gray-600">
-            {hasStarted
-              ? isActive
+          <div className="flex items-center gap-4 text-sm text-gray-400">
+            <span>{numCandidates} candidate{numCandidates !== 1 ? "s" : ""}</span>
+            <span className="text-white/10">·</span>
+            <span>
+              {isActive
                 ? `Closes in ${formatCountdown(secondsLeft)}`
-                : `Ended ${new Date(endTs * 1000).toLocaleString()}`
-              : `Opens ${new Date(startTs * 1000).toLocaleString()}`}
-          </p>
+                : hasStarted
+                ? `Ended ${new Date(endTs * 1000).toLocaleString()}`
+                : `Opens ${new Date(startTs * 1000).toLocaleString()}`}
+            </span>
+          </div>
         </div>
 
         {/* Results */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="card p-5">
           <ResultsChart address={electionAddress} candidateNames={displayNames} />
         </div>
 

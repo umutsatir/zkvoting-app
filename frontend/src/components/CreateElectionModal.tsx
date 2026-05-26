@@ -48,13 +48,12 @@ export default function CreateElectionModal({ onClose, onCreated }: Props) {
         return;
       }
 
-      setStatus("Building Merkle tree...");
+      setStatus("Building Merkle tree…");
       const merkleRoot = await computeMerkleRoot(addresses);
 
       const startTs = BigInt(Math.floor(new Date(startDate).getTime() / 1000));
       const endTs = BigInt(Math.floor(new Date(endDate).getTime() / 1000));
 
-      // election ID = keccak256(name + startTs)
       const electionId = keccak256(
         encodeAbiParameters(
           [{ type: "string" }, { type: "uint256" }],
@@ -62,14 +61,14 @@ export default function CreateElectionModal({ onClose, onCreated }: Props) {
         )
       );
 
-      // Persist election metadata locally
+      // Persist metadata locally
       const stored = JSON.parse(localStorage.getItem("zkvoting:names") ?? "{}");
       stored[electionId] = name;
       localStorage.setItem("zkvoting:names", JSON.stringify(stored));
       localStorage.setItem(`election_voters_${electionId}`, JSON.stringify(addresses));
       localStorage.setItem(`election_names_${electionId}`, JSON.stringify(filledCandidates));
 
-      setStatus("Sending transaction...");
+      setStatus("Sending transaction…");
       const hash = await writeContractAsync({
         address: FACTORY_ADDRESS,
         abi: electionFactoryAbi,
@@ -84,7 +83,7 @@ export default function CreateElectionModal({ onClose, onCreated }: Props) {
         ],
       });
       setTxHash(hash);
-      setStatus("Waiting for confirmation...");
+      setStatus("Waiting for confirmation…");
     } catch (err: unknown) {
       setStatus("Error: " + (err instanceof Error ? err.message : String(err)));
       setLoading(false);
@@ -92,16 +91,23 @@ export default function CreateElectionModal({ onClose, onCreated }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl font-semibold">Create Election</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl leading-none">&times;</button>
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-[#16181f] border border-white/10 rounded-2xl shadow-2xl w-full max-w-lg p-6">
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-lg font-semibold text-white">Create Election</h2>
+          <button
+            onClick={onClose}
+            className="text-gray-500 hover:text-gray-300 transition-colors text-xl leading-none"
+          >
+            ✕
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Election Name</label>
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+              Election Name
+            </label>
             <input
               className="input"
               value={name}
@@ -112,58 +118,65 @@ export default function CreateElectionModal({ onClose, onCreated }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Candidates (up to 4)</label>
-            {candidates.map((c, i) => (
-              <input
-                key={i}
-                className="input mb-1"
-                value={c}
-                onChange={(e) => {
-                  const next = [...candidates];
-                  next[i] = e.target.value;
-                  setCandidates(next);
-                }}
-                placeholder={`Candidate ${i + 1}`}
-              />
-            ))}
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+              Candidates (up to 4)
+            </label>
+            <div className="space-y-1.5">
+              {candidates.map((c, i) => (
+                <input
+                  key={i}
+                  className="input"
+                  value={c}
+                  onChange={(e) => {
+                    const next = [...candidates];
+                    next[i] = e.target.value;
+                    setCandidates(next);
+                  }}
+                  placeholder={`Candidate ${i + 1}`}
+                />
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1">Start</label>
+              <label className="block text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">Start</label>
               <input type="datetime-local" className="input" value={startDate}
                 onChange={(e) => setStartDate(e.target.value)} required />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">End</label>
+              <label className="block text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">End</label>
               <input type="datetime-local" className="input" value={endDate}
                 onChange={(e) => setEndDate(e.target.value)} required />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">
-              Voter Addresses (one per line or comma-separated)
+            <label className="block text-xs font-medium text-gray-400 uppercase tracking-wide mb-1.5">
+              Voter Addresses
             </label>
             <textarea
               className="input h-28 resize-none font-mono text-xs"
               value={voterList}
               onChange={(e) => setVoterList(e.target.value)}
-              placeholder="0xAbc...\n0xDef..."
+              placeholder={"0xAbc...\n0xDef..."}
               required
             />
+            <p className="text-xs text-gray-600 mt-1">One per line or comma-separated</p>
           </div>
 
           {status && (
-            <p className="text-sm text-blue-600">{status}</p>
+            <p className={`text-sm ${status.startsWith("Error") ? "text-red-400" : "text-violet-400"}`}>
+              {status}
+            </p>
           )}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <div className="flex justify-end gap-2 pt-1">
             <button type="button" onClick={onClose} className="btn-secondary">
               Cancel
             </button>
             <button type="submit" disabled={loading} className="btn-primary">
-              {loading ? "Creating..." : "Create Election"}
+              {loading ? "Creating…" : "Create Election"}
             </button>
           </div>
         </form>
